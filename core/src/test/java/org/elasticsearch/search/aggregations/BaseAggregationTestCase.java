@@ -95,7 +95,6 @@ public abstract class BaseAggregationTestCase<AF extends AggregatorFactory> exte
 
     /**
      * Setup for the whole base test class.
-     * @throws IOException
      */
     @BeforeClass
     public static void init() throws IOException {
@@ -115,7 +114,7 @@ public abstract class BaseAggregationTestCase<AF extends AggregatorFactory> exte
                 new IndexSettingsModule(index, settings),
                 new IndexCacheModule(settings),
                 new AnalysisModule(settings, new IndicesAnalysisService(settings)),
-                new SimilarityModule(settings),
+                new SimilarityModule(index, settings),
                 new IndexNameModule(index),
                 new SearchModule(settings) {
 
