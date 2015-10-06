@@ -22,6 +22,7 @@ package org.elasticsearch.common.geo;
 
 import org.apache.lucene.document.XGeoPointField;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.XGeoHashUtils;
 import org.apache.lucene.util.XGeoUtils;
 
@@ -40,7 +41,7 @@ public final class GeoPoint {
     /**
      * Create a new Geopointform a string. This String must either be a geohash
      * or a lat-lon tuple.
-     *   
+     *
      * @param value String to create the point from
      */
     public GeoPoint(String value) {
@@ -84,7 +85,7 @@ public final class GeoPoint {
             lat = Double.parseDouble(value.substring(0, comma).trim());
             lon = Double.parseDouble(value.substring(comma + 1).trim());
         } else {
-            resetFromGeohashString(value);
+            this.resetFromGeoHash(value);
         }
         return this;
     }
@@ -95,14 +96,14 @@ public final class GeoPoint {
         return this;
     }
 
-    public GeoPoint resetFromGeohashString(String geohash) {
+    public GeoPoint resetFromGeoHash(String geohash) {
         final long hash = XGeoHashUtils.mortonEncode(geohash);
         return this.reset(XGeoUtils.mortonUnhashLat(hash), XGeoUtils.mortonUnhashLon(hash));
     }
 
-    public GeoPoint resetFromGeohashLong(long geohashLong) {
+    public GeoPoint resetFromGeoHash(long geohashLong) {
         final int level = (int)(12 - (geohashLong&15));
-        return this.resetFromIndexHash(XGeoUtils.flipFlop((geohashLong >>> 4) << ((level * 5) + 2)));
+        return this.resetFromIndexHash(BitUtil.flipFlop((geohashLong >>> 4) << ((level * 5) + 2)));
     }
 
     public final double lat() {
@@ -168,12 +169,12 @@ public final class GeoPoint {
         return point;
     }
 
-    public static GeoPoint fromGeohashString(String geohash) {
-        return new GeoPoint().resetFromGeohashString(geohash);
+    public static GeoPoint fromGeohash(String geohash) {
+        return new GeoPoint().resetFromGeoHash(geohash);
     }
 
-    public static GeoPoint fromGeohashLong(long geohashLong) {
-        return new GeoPoint().resetFromGeohashLong(geohashLong);
+    public static GeoPoint fromGeohash(long geohashLong) {
+        return new GeoPoint().resetFromGeoHash(geohashLong);
     }
 
     public static GeoPoint fromIndexLong(long indexLong) {

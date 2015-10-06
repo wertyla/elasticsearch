@@ -342,7 +342,7 @@ public abstract class ESIntegTestCase extends ESTestCase {
                     fail("Unknown Scope: [" + currentClusterScope + "]");
             }
             cluster().beforeTest(getRandom(), getPerTestTransportClientRatio());
-            cluster().wipe();
+            cluster().wipe(excludeTemplates());
             randomIndexTemplate();
         } catch (OutOfMemoryError e) {
             if (e.getMessage().contains("unable to create new native thread")) {
@@ -605,7 +605,7 @@ public abstract class ESIntegTestCase extends ESTestCase {
                     ensureClusterSizeConsistency();
                     ensureClusterStateConsistency();
                     beforeIndexDeletion();
-                    cluster().wipe(); // wipe after to make sure we fail in the test that didn't ack the delete
+                    cluster().wipe(excludeTemplates()); // wipe after to make sure we fail in the test that didn't ack the delete
                     if (afterClass || currentClusterScope == Scope.TEST) {
                         cluster().close();
                     }
@@ -624,6 +624,13 @@ public abstract class ESIntegTestCase extends ESTestCase {
                 // afterTestRule.forceFailure();
             }
         }
+    }
+
+    /**
+     * @return An exclude set of index templates that will not be removed in between tests.
+     */
+    protected Set<String> excludeTemplates() {
+        return Collections.emptySet();
     }
 
     protected void beforeIndexDeletion() {
@@ -1110,8 +1117,9 @@ public abstract class ESIntegTestCase extends ESTestCase {
                 localClusterState = ClusterState.Builder.fromBytes(localClusterStateBytes, null);
                 final Map<String, Object> localStateMap = convertToMap(localClusterState);
                 final int localClusterStateSize = localClusterState.toString().length();
-                // Check that the non-master node has the same version of the cluster state as the master and that this node didn't disconnect from the master
-                if (masterClusterState.version() == localClusterState.version() && localClusterState.nodes().nodes().containsKey(masterId)) {
+                // Check that the non-master node has the same version of the cluster state as the master and
+                // that the master node matches the master (otherwise there is no requirement for the cluster state to match)
+                if (masterClusterState.version() == localClusterState.version() && masterId.equals(localClusterState.nodes().masterNodeId())) {
                     try {
                         assertEquals("clusterstate UUID does not match", masterClusterState.stateUUID(), localClusterState.stateUUID());
                         // We cannot compare serialization bytes since serialization order of maps is not guaranteed

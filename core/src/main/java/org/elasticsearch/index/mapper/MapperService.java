@@ -426,10 +426,10 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
 
         if (types == null || types.length == 0) {
             if (hasNested && filterPercolateType) {
-                BooleanQuery bq = new BooleanQuery();
+                BooleanQuery.Builder bq = new BooleanQuery.Builder();
                 bq.add(percolatorType, Occur.MUST_NOT);
                 bq.add(Queries.newNonNestedFilter(), Occur.MUST);
-                return new ConstantScoreQuery(bq);
+                return new ConstantScoreQuery(bq.build());
             } else if (hasNested) {
                 return Queries.newNonNestedFilter();
             } else if (filterPercolateType) {
@@ -444,10 +444,10 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
             DocumentMapper docMapper = documentMapper(types[0]);
             Query filter = docMapper != null ? docMapper.typeFilter() : new TermQuery(new Term(TypeFieldMapper.NAME, types[0]));
             if (filterPercolateType) {
-                BooleanQuery bq = new BooleanQuery();
+                BooleanQuery.Builder bq = new BooleanQuery.Builder();
                 bq.add(percolatorType, Occur.MUST_NOT);
                 bq.add(filter, Occur.MUST);
-                return new ConstantScoreQuery(bq);
+                return new ConstantScoreQuery(bq.build());
             } else {
                 return filter;
             }
@@ -474,16 +474,16 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
             }
             TermsQuery termsFilter = new TermsQuery(TypeFieldMapper.NAME, typesBytes);
             if (filterPercolateType) {
-                BooleanQuery bq = new BooleanQuery();
+                BooleanQuery.Builder bq = new BooleanQuery.Builder();
                 bq.add(percolatorType, Occur.MUST_NOT);
                 bq.add(termsFilter, Occur.MUST);
-                return new ConstantScoreQuery(bq);
+                return new ConstantScoreQuery(bq.build());
             } else {
                 return termsFilter;
             }
         } else {
             // Current bool filter requires that at least one should clause matches, even with a must clause.
-            BooleanQuery bool = new BooleanQuery();
+            BooleanQuery.Builder bool = new BooleanQuery.Builder();
             for (String type : types) {
                 DocumentMapper docMapper = documentMapper(type);
                 if (docMapper == null) {
@@ -499,7 +499,7 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
                 bool.add(Queries.newNonNestedFilter(), BooleanClause.Occur.MUST);
             }
 
-            return new ConstantScoreQuery(bool);
+            return new ConstantScoreQuery(bool.build());
         }
     }
 
@@ -563,7 +563,7 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
         final ImmutableMap<String, MappedFieldType> unmappedFieldMappers = this.unmappedFieldTypes;
         MappedFieldType fieldType = unmappedFieldMappers.get(type);
         if (fieldType == null) {
-            final Mapper.TypeParser.ParserContext parserContext = documentMapperParser().parserContext();
+            final Mapper.TypeParser.ParserContext parserContext = documentMapperParser().parserContext(type);
             Mapper.TypeParser typeParser = parserContext.typeParser(type);
             if (typeParser == null) {
                 throw new IllegalArgumentException("No mapper found for type [" + type + "]");

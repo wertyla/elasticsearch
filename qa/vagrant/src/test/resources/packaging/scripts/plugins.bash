@@ -32,10 +32,26 @@ install_plugin() {
 
     assert_file_exist "$path"
 
-    "$ESHOME/bin/plugin" install "file://$path"
+    sudo -E -u $ESPLUGIN_COMMAND_USER "$ESHOME/bin/plugin" install "file://$path"
 
     assert_file_exist "$ESPLUGINS/$name"
     assert_file_exist "$ESPLUGINS/$name/plugin-descriptor.properties"
+    #check we did not accidentially create a log file as root as /usr/share/elasticsearch
+    assert_file_not_exist "/usr/share/elasticsearch/logs"
+
+    # At some point installing or removing plugins caused elasticsearch's logs
+    # to be owned by root. This is bad so we want to make sure it doesn't
+    # happen.
+    if [ -e "$ESLOG" ] && [ $(stat "$ESLOG" --format "%U") == "root" ]; then
+        echo "$ESLOG is now owned by root! That'll break logging when elasticsearch tries to start."
+        false
+    fi
+}
+
+install_jvm_plugin() {
+    local name=$1
+    local path="$2"
+    install_plugin $name "$path"
     assert_file_exist "$ESPLUGINS/$name/$name"*".jar"
 }
 
@@ -44,16 +60,24 @@ remove_plugin() {
     local name=$1
 
     echo "Removing $name...."
-    "$ESHOME/bin/plugin" remove $name
+    sudo -E -u $ESPLUGIN_COMMAND_USER "$ESHOME/bin/plugin" remove $name
 
     assert_file_not_exist "$ESPLUGINS/$name"
+
+    # At some point installing or removing plugins caused elasticsearch's logs
+    # to be owned by root. This is bad so we want to make sure it doesn't
+    # happen.
+    if [ -e "$ESLOG" ] && [ $(stat "$ESLOG" --format "%U") == "root" ]; then
+        echo "$ESLOG is now owned by root! That'll break logging when elasticsearch tries to start."
+        false
+    fi
 }
 
 # Install the jvm-example plugin which fully excercises the special case file
 # placements for non-site plugins.
 install_jvm_example() {
     local relativePath=${1:-$(readlink -m jvm-example-*.zip)}
-    install_plugin jvm-example "$relativePath"
+    install_jvm_plugin jvm-example "$relativePath"
 
     assert_file_exist "$ESHOME/bin/jvm-example"
     assert_file_exist "$ESHOME/bin/jvm-example/test"
@@ -74,14 +98,14 @@ remove_jvm_example() {
     assert_file_exist "$ESCONFIG/jvm-example/example.yaml"
 }
 
-# Install and remove a plugin with a special prefix. For the most part prefixes
-# are just useful for grouping but the "analysis" prefix is special because all
+# Install a plugin with a special prefix. For the most part prefixes are just
+# useful for grouping but the "analysis" prefix is special because all
 # analysis plugins come with a corresponding lucene-analyzers jar.
 # $1 - the prefix
 # $2 - the plugin name
 # $@ - all remaining arguments are jars that must exist in the plugin's
 #      installation directory
-install_and_remove_special_plugin() {
+install_and_check_plugin() {
     local prefix=$1
     shift
     local name=$1
@@ -93,12 +117,22 @@ install_and_remove_special_plugin() {
         local fullName="$prefix-$name"
     fi
 
-    install_plugin $fullName "$(readlink -m $fullName-*.zip)"
+    install_jvm_plugin $fullName "$(readlink -m $fullName-*.zip)"
     if [ $prefix == 'analysis' ]; then
         assert_file_exist "$(readlink -m $ESPLUGINS/$fullName/lucene-analyzers-$name-*.jar)"
     fi
     for file in "$@"; do
         assert_file_exist "$(readlink -m $ESPLUGINS/$fullName/$file)"
     done
-    remove_plugin $fullName
+}
+
+# Compare a list of plugin names to the plugins in the plugins pom and see if they are the same
+# $1 the file containing the list of plugins we want to compare to
+# $2 description of the source of the plugin list
+compare_plugins_list() {
+    cat $1 | sort > /tmp/plugins
+    ls /elasticsearch/plugins/*/pom.xml | cut -d '/' -f 4 |
+        sort > /tmp/expected
+    echo "Checking plugins from $2 (<) against expected plugins (>):"
+    diff /tmp/expected /tmp/plugins
 }

@@ -28,8 +28,6 @@ import org.junit.Test;
  * Tests for {@link org.apache.lucene.util.XGeoHashUtils}
  */
 public class GeoHashTests extends ESTestCase {
-
-
     @Test
     public void testGeohashAsLongRoutines()  {
         final GeoPoint expected = new GeoPoint();
@@ -55,16 +53,13 @@ public class GeoHashTests extends ESTestCase {
                     assertEquals(geohash, geohashFromLong);
 
                     // decode from the full-res geohash string
-                    expected.resetFromGeohashString(geohash);
+                    expected.resetFromGeoHash(geohash);
                     // decode from the geohash encoded long
-                    actual.resetFromGeohashLong(geoAsLong);
+                    actual.resetFromGeoHash(geoAsLong);
 
                     assertEquals(expected, actual);
                 }
             }
-            
-        }        
+        }
     }
-
-
 }

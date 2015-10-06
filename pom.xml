@@ -44,7 +44,7 @@
         <lucene.version>5.3.0</lucene.version>
         <lucene.maven.version>5.3.0</lucene.maven.version>
         <testframework.version>2.1.16</testframework.version>
-        <jackson.version>2.5.3</jackson.version>
+        <jackson.version>2.6.2</jackson.version>
         <slf4j.version>1.6.2</slf4j.version>
         <log4j.version>1.2.17</log4j.version>
         <jacoco.version>0.7.5.201505241946</jacoco.version>
@@ -71,7 +71,7 @@
         <tests.timezone>random</tests.timezone>
         <es.logger.level>ERROR</es.logger.level>
         <tests.heap.size>512m</tests.heap.size>
-        <tests.heapdump.path>${basedir}/logs/</tests.heapdump.path>
+        <tests.heapdump.path>${project.build.directory}/heapdump/</tests.heapdump.path>
         <tests.topn>5</tests.topn>
         <execution.hint.file>.local-${elasticsearch.version}-execution-hints.log</execution.hint.file>
         <execution.hint.integ.file>.local-${elasticsearch.version}-integ-execution-hints.log</execution.hint.integ.file>
@@ -111,8 +111,8 @@
         <tests.ifNoTests>fail</tests.ifNoTests>
         <skip.unit.tests>${skipTests}</skip.unit.tests>
         <skip.integ.tests>${skipTests}</skip.integ.tests>
-        <integ.scratch>${project.build.directory}/integ-tests</integ.scratch>
-        <integ.deps>${project.build.directory}/integ-deps</integ.deps>
+        <integ.scratch>${project.build.directory}/integ tests</integ.scratch>
+        <integ.deps>${project.build.directory}/integ deps</integ.deps>
         <integ.temp>${integ.scratch}/temp</integ.temp>
         <integ.http.port>9400</integ.http.port>
         <integ.transport.port>9500</integ.transport.port>
@@ -460,6 +460,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>1.4.1</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -524,7 +525,6 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-enforcer-plugin</artifactId>
-                    <version>1.4.1</version>
                     <executions>
                         <execution>
                             <id>enforce-versions</id>
@@ -558,6 +558,21 @@
                             <goals>
                                 <goal>display-info</goal>
                             </goals>
+                        </execution>
+                        <execution>
+                            <id>enforce-java-home-is-set</id>
+                            <goals>
+                                <goal>enforce</goal>
+                            </goals>
+                            <configuration>
+                                <rules>
+                                    <requireEnvironmentVariable>
+                                        <variableName>JAVA_HOME</variableName>
+                                        <message>"JAVA_HOME must be set and point to the jdk to run the tests"</message>
+                                    </requireEnvironmentVariable>
+                                </rules>
+                                <fail>true</fail>
+                            </configuration>
                         </execution>
                     </executions>
                 </plugin>
@@ -678,6 +693,7 @@
                                     showStatusFailure="true"
                                     showStatusIgnored="true"
                                     showSuiteSummary="true"
+                                    showNumFailures="30"
                                     timestamps="false">
                                 <filtertrace>
                                     <!-- custom filters: we carefully only omit test infra noise here -->

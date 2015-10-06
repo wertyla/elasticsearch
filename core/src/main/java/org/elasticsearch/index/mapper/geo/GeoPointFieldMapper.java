@@ -25,6 +25,13 @@ import org.apache.lucene.document.XGeoPointField;
 import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.IndexOptions;
 import org.elasticsearch.common.Strings;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.NumericUtils;
+import org.apache.lucene.util.XGeoHashUtils;
+import org.elasticsearch.Version;
+import org.elasticsearch.common.Explicit;
+import org.elasticsearch.common.Strings;
+import org.elasticsearch.common.geo.GeoDistance;
 import org.elasticsearch.common.geo.GeoPoint;
 import org.elasticsearch.common.geo.GeoUtils;
 import org.elasticsearch.common.settings.Settings;
@@ -33,6 +40,8 @@ import org.elasticsearch.index.mapper.ContentPath;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.Mapper;
 import org.elasticsearch.index.mapper.MapperParsingException;
+import org.elasticsearch.index.mapper.MergeMappingException;
+import org.elasticsearch.index.mapper.MergeResult;
 import org.elasticsearch.index.mapper.ParseContext;
 import org.elasticsearch.index.mapper.core.DoubleFieldMapper;
 import org.elasticsearch.index.mapper.core.StringFieldMapper;
@@ -103,11 +112,12 @@ public class GeoPointFieldMapper extends BaseGeoPointFieldMapper  {
         @Override
         public GeoPointFieldMapper build(BuilderContext context, String simpleName, MappedFieldType fieldType,
               MappedFieldType defaultFieldType, Settings indexSettings, ContentPath.Type pathType, DoubleFieldMapper latMapper,
-              DoubleFieldMapper lonMapper, StringFieldMapper geohashMapper, MultiFields multiFields, CopyTo copyTo) {
+              DoubleFieldMapper lonMapper, StringFieldMapper geohashMapper, MultiFields multiFields, Explicit<Boolean> ignoreMalformed,
+              CopyTo copyTo) {
             fieldType.setTokenized(false);
             setupFieldType(context);
             return new GeoPointFieldMapper(simpleName, fieldType, defaultFieldType, indexSettings, pathType, latMapper, lonMapper,
-                    geohashMapper, multiFields, copyTo);
+                    geohashMapper, multiFields, ignoreMalformed, copyTo);
         }
 
         @Override
@@ -117,15 +127,11 @@ public class GeoPointFieldMapper extends BaseGeoPointFieldMapper  {
     }
 
     protected static Builder parse(Builder builder, Map<String, Object> node) throws MapperParsingException {
-        for (Iterator<Map.Entry<String, Object>> iterator = node.entrySet().iterator(); iterator.hasNext();) {
-            Map.Entry<String, Object> entry = iterator.next();
-            String fieldName = Strings.toUnderscoreCase(entry.getKey());
-            Object fieldNode = entry.getValue();
-            if (fieldName.equals(Names.IGNORE_MALFORMED)) {
-                builder.fieldType().ignoreMalformed = XContentMapValues.nodeBooleanValue(fieldNode);
-                iterator.remove();
-            }
-        }
+//        for (Iterator<Map.Entry<String, Object>> iterator = node.entrySet().iterator(); iterator.hasNext();) {
+//            Map.Entry<String, Object> entry = iterator.next();
+//            String fieldName = Strings.toUnderscoreCase(entry.getKey());
+//            Object fieldNode = entry.getValue();
+//        }
         return builder;
     }
 
@@ -162,8 +168,9 @@ public class GeoPointFieldMapper extends BaseGeoPointFieldMapper  {
 
     public GeoPointFieldMapper(String simpleName, MappedFieldType fieldType, MappedFieldType defaultFieldType, Settings indexSettings,
                                ContentPath.Type pathType, DoubleFieldMapper latMapper, DoubleFieldMapper lonMapper,
-                               StringFieldMapper geohashMapper, MultiFields multiFields, CopyTo copyTo) {
-        super(simpleName, fieldType, defaultFieldType, indexSettings, pathType, latMapper, lonMapper, geohashMapper, multiFields, copyTo);
+                               StringFieldMapper geohashMapper, MultiFields multiFields, Explicit<Boolean> ignoreMalformed, CopyTo copyTo) {
+        super(simpleName, fieldType, defaultFieldType, indexSettings, pathType, latMapper, lonMapper, geohashMapper, multiFields,
+                ignoreMalformed, copyTo);
     }
 
     @Override
@@ -178,7 +185,7 @@ public class GeoPointFieldMapper extends BaseGeoPointFieldMapper  {
 
     @Override
     protected void parse(ParseContext context, GeoPoint point, String geohash) throws IOException {
-        if (fieldType().ignoreMalformed == false) {
+        if (ignoreMalformed.value() == false) {
             if (point.lat() > 90.0 || point.lat() < -90.0) {
                 throw new IllegalArgumentException("illegal latitude value [" + point.lat() + "] for " + name());
             }

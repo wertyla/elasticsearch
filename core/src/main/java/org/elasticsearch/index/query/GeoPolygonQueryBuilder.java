@@ -55,7 +55,7 @@ public class GeoPolygonQueryBuilder extends QueryBuilder {
     }
 
     public GeoPolygonQueryBuilder addPoint(String geohash) {
-        return addPoint(GeoPoint.fromGeohashString(geohash));
+        return addPoint(GeoPoint.fromGeohash(geohash));
     }
 
     public GeoPolygonQueryBuilder addPoint(GeoPoint point) {

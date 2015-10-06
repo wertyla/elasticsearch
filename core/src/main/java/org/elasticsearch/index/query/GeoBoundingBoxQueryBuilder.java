@@ -64,7 +64,7 @@ public class GeoBoundingBoxQueryBuilder extends QueryBuilder {
     }
 
     public GeoBoundingBoxQueryBuilder topLeft(String geohash) {
-        return topLeft(GeoPoint.fromGeohashString(geohash));
+        return topLeft(GeoPoint.fromGeohash(geohash));
     }
 
     /**
@@ -84,7 +84,7 @@ public class GeoBoundingBoxQueryBuilder extends QueryBuilder {
     }
 
     public GeoBoundingBoxQueryBuilder bottomRight(String geohash) {
-        return bottomRight(GeoPoint.fromGeohashString(geohash));
+        return bottomRight(GeoPoint.fromGeohash(geohash));
     }
 
     /**
@@ -104,7 +104,7 @@ public class GeoBoundingBoxQueryBuilder extends QueryBuilder {
     }
 
     public GeoBoundingBoxQueryBuilder bottomLeft(String geohash) {
-        return bottomLeft(GeoPoint.fromGeohashString(geohash));
+        return bottomLeft(GeoPoint.fromGeohash(geohash));
     }
     
     /**
@@ -124,7 +124,7 @@ public class GeoBoundingBoxQueryBuilder extends QueryBuilder {
     }
 
     public GeoBoundingBoxQueryBuilder topRight(String geohash) {
-        return topRight(GeoPoint.fromGeohashString(geohash));
+        return topRight(GeoPoint.fromGeohash(geohash));
     }
 
     /**

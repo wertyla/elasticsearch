@@ -19,7 +19,6 @@
 
 package org.elasticsearch.plugins;
 
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterators;
 import org.apache.lucene.util.IOUtils;
@@ -29,6 +28,7 @@ import org.elasticsearch.ElasticsearchTimeoutException;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.Version;
 import org.elasticsearch.bootstrap.JarHell;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.cli.Terminal;
 import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.http.client.HttpDownloadHelper;
@@ -41,7 +41,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFileAttributeView;
@@ -222,7 +221,7 @@ public class PluginManager {
 
         // read and validate the plugin descriptor
         PluginInfo info = PluginInfo.readFromProperties(root);
-        terminal.println("%s", info);
+        terminal.println(VERBOSE, "%s", info);
 
         // check for jar hell before any copying
         if (info.isJvm()) {
@@ -313,14 +312,10 @@ public class PluginManager {
     /** check a candidate plugin for jar hell before installing it */
     private void jarHellCheck(Path candidate, boolean isolated) throws IOException {
         // create list of current jars in classpath
-        final List<URL> jars = new ArrayList<>();
-        ClassLoader loader = PluginManager.class.getClassLoader();
-        if (loader instanceof URLClassLoader) {
-            Collections.addAll(jars, ((URLClassLoader) loader).getURLs());
-        }
+        final List<URL> jars = new ArrayList<>(Arrays.asList(JarHell.parseClassPath()));
 
         // read existing bundles. this does some checks on the installation too.
-        List<Bundle> bundles = PluginsService.getPluginBundles(environment);
+        List<Bundle> bundles = PluginsService.getPluginBundles(environment.pluginsFile());
 
         // if we aren't isolated, we need to jarhellcheck against any other non-isolated plugins
         // thats always the first bundle

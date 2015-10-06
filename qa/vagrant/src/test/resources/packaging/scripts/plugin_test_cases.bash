@@ -53,7 +53,6 @@ setup() {
     if [ $BATS_TEST_NUMBER == 1 ] ||
             [[ $BATS_TEST_NAME =~ install_jvm.*example ]] ||
             [ ! -d "$ESHOME" ]; then
-        echo "cleaning" >> /tmp/ss
         clean_before_test
         install
     fi
@@ -68,25 +67,21 @@ if [[ "$BATS_TEST_FILENAME" =~ 25_tar_plugins.bats$ ]]; then
     }
     export ESHOME=/tmp/elasticsearch
     export_elasticsearch_paths
+    export ESPLUGIN_COMMAND_USER=elasticsearch
 else
+    load os_package
     if is_rpm; then
         GROUP='RPM PLUGINS'
     elif is_dpkg; then
         GROUP='DEB PLUGINS'
     fi
-    export ESHOME="/usr/share/elasticsearch"
-    export ESPLUGINS="$ESHOME/plugins"
-    export ESCONFIG="/etc/elasticsearch"
+    export_elasticsearch_paths
+    export ESPLUGIN_COMMAND_USER=root
     install() {
         install_package
         verify_package_installation
     }
 fi
-
-@test "[$GROUP] install jvm-example plugin" {
-    install_jvm_example
-    remove_jvm_example
-}
 
 @test "[$GROUP] install jvm-example plugin with a custom path.plugins" {
     # Clean up after the last time this test was run
@@ -100,6 +95,12 @@ fi
     chown -R elasticsearch:elasticsearch "$ESPLUGINS"
 
     install_jvm_example
+    start_elasticsearch_service
+    # check that configuration was actually picked up    
+    curl -s localhost:9200/_cat/configured_example | sed 's/ *$//' > /tmp/installed
+    echo "foo" > /tmp/expected
+    diff /tmp/installed /tmp/expected
+    stop_elasticsearch_service
     remove_jvm_example
 }
 
@@ -132,54 +133,205 @@ fi
     remove_jvm_example
 }
 
+@test "[$GROUP] fail if java executable is not found" {
+  [ "$GROUP" == "TAR PLUGINS" ] || skip "Test case only supported by TAR PLUGINS"
+  local JAVA=$(which java)
+
+  sudo chmod -x $JAVA
+  run "$ESHOME/bin/plugin"
+  sudo chmod +x $JAVA
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Could not find any executable java binary. Please install java in your PATH or set JAVA_HOME"* ]]
+}
+
+# Note that all of the tests from here to the end of the file expect to be run
+# in sequence and don't take well to being run one at a time.
+@test "[$GROUP] install jvm-example plugin" {
+    install_jvm_example
+}
+
 @test "[$GROUP] install icu plugin" {
-    install_and_remove_special_plugin analysis icu icu4j-*.jar
+    install_and_check_plugin analysis icu icu4j-*.jar
 }
 
 @test "[$GROUP] install kuromoji plugin" {
-    install_and_remove_special_plugin analysis kuromoji
+    install_and_check_plugin analysis kuromoji
 }
 
 @test "[$GROUP] install phonetic plugin" {
-    install_and_remove_special_plugin analysis phonetic commons-codec-*.jar
+    install_and_check_plugin analysis phonetic commons-codec-*.jar
 }
 
 @test "[$GROUP] install smartcn plugin" {
-    install_and_remove_special_plugin analysis smartcn
+    install_and_check_plugin analysis smartcn
 }
 
 @test "[$GROUP] install stempel plugin" {
-    install_and_remove_special_plugin analysis stempel
+    install_and_check_plugin analysis stempel
 }
 
 @test "[$GROUP] install aws plugin" {
-    install_and_remove_special_plugin cloud aws aws-java-sdk-core-*.jar
+    install_and_check_plugin cloud aws aws-java-sdk-core-*.jar
 }
 
 @test "[$GROUP] install azure plugin" {
-    install_and_remove_special_plugin cloud azure azure-core-*.jar
+    install_and_check_plugin cloud azure azure-core-*.jar
 }
 
 @test "[$GROUP] install gce plugin" {
-    install_and_remove_special_plugin cloud gce google-api-client-*.jar
+    install_and_check_plugin cloud gce google-api-client-*.jar
 }
 
 @test "[$GROUP] install delete by query" {
-    install_and_remove_special_plugin - delete-by-query
+    install_and_check_plugin - delete-by-query
+}
+
+@test "[$GROUP] install multicast discovery plugin" {
+    install_and_check_plugin discovery multicast
 }
 
 @test "[$GROUP] install javascript plugin" {
-    install_and_remove_special_plugin lang javascript rhino-*.jar
+    install_and_check_plugin lang javascript rhino-*.jar
 }
 
 @test "[$GROUP] install python plugin" {
-    install_and_remove_special_plugin lang python jython-standalone-*.jar
+    install_and_check_plugin lang python jython-standalone-*.jar
 }
 
 @test "[$GROUP] install murmur3 mapper" {
-    install_and_remove_special_plugin mapper murmur3
+    install_and_check_plugin mapper murmur3
 }
 
 @test "[$GROUP] install size mapper" {
-    install_and_remove_special_plugin mapper size
+    install_and_check_plugin mapper size
 }
+
+@test "[$GROUP] install site example" {
+    # Doesn't use install_and_check_plugin because this is a site plugin
+    install_plugin site-example $(readlink -m site-example-*.zip)
+    assert_file_exist "$ESHOME/plugins/site-example/_site/index.html"
+}
+
+@test "[$GROUP] check the installed plugins can be listed with 'plugins list' and result matches the list of plugins in plugins pom" {
+    "$ESHOME/bin/plugin" list | tail -n +2 | sed 's/^......//' > /tmp/installed
+    compare_plugins_list "/tmp/installed" "'plugins list'"
+}
+
+@test "[$GROUP] start elasticsearch with all plugins installed" {
+    start_elasticsearch_service
+}
+
+@test "[$GROUP] check the installed plugins matches the list of build plugins" {
+    curl -s localhost:9200/_cat/plugins?h=c | sed 's/ *$//' > /tmp/installed
+    compare_plugins_list "/tmp/installed" "_cat/plugins"
+}
+
+@test "[$GROUP] stop elasticsearch" {
+    stop_elasticsearch_service
+}
+
+@test "[$GROUP] remove jvm-example plugin" {
+    remove_jvm_example
+}
+
+@test "[$GROUP] remove icu plugin" {
+    remove_plugin analysis-icu
+}
+
+@test "[$GROUP] remove kuromoji plugin" {
+    remove_plugin analysis-kuromoji
+}
+
+@test "[$GROUP] remove phonetic plugin" {
+    remove_plugin analysis-phonetic
+}
+
+@test "[$GROUP] remove smartcn plugin" {
+    remove_plugin analysis-smartcn
+}
+
+@test "[$GROUP] remove stempel plugin" {
+    remove_plugin analysis-stempel
+}
+
+@test "[$GROUP] remove aws plugin" {
+    remove_plugin cloud-aws
+}
+
+@test "[$GROUP] remove azure plugin" {
+    remove_plugin cloud-azure
+}
+
+@test "[$GROUP] remove gce plugin" {
+    remove_plugin cloud-gce
+}
+
+@test "[$GROUP] remove delete by query" {
+    remove_plugin delete-by-query
+}
+
+@test "[$GROUP] remove multicast discovery plugin" {
+    remove_plugin discovery-multicast
+}
+
+@test "[$GROUP] remove javascript plugin" {
+    remove_plugin lang-javascript
+}
+
+@test "[$GROUP] remove python plugin" {
+    remove_plugin lang-python
+}
+
+@test "[$GROUP] remove murmur3 mapper" {
+    remove_plugin mapper-murmur3
+}
+
+@test "[$GROUP] remove size mapper" {
+    remove_plugin mapper-size
+}
+
+@test "[$GROUP] remove site example" {
+    remove_plugin site-example
+}
+
+@test "[$GROUP] start elasticsearch with all plugins removed" {
+    start_elasticsearch_service
+}
+
+@test "[$GROUP] check that there are now no plugins installed" {
+    curl -s localhost:9200/_cat/plugins > /tmp/installed
+    local installedCount=$(cat /tmp/installed | wc -l)
+    [ "$installedCount" == "0" ] || {
+        echo "Expected all plugins to be removed but found $installedCount:"
+        cat /tmp/installed
+        false
+    }
+}
+
+@test "[$GROUP] stop elasticsearch" {
+    stop_elasticsearch_service
+}
+
+@test "[$GROUP] install jvm-example with different logging modes and check output" {
+    local relativePath=${1:-$(readlink -m jvm-example-*.zip)}
+    sudo -E -u $ESPLUGIN_COMMAND_USER "$ESHOME/bin/plugin" install "file://$relativePath" > /tmp/plugin-cli-output
+    local loglines=$(cat /tmp/plugin-cli-output | wc -l)
+    [ "$loglines" = "6" ] || {
+        echo "Expected 6 lines but the output was:"
+        cat /tmp/plugin-cli-output
+        false
+    }
+    remove_jvm_example
+
+    local relativePath=${1:-$(readlink -m jvm-example-*.zip)}
+    sudo -E -u $ESPLUGIN_COMMAND_USER "$ESHOME/bin/plugin" install "file://$relativePath" -Des.logger.level=DEBUG > /tmp/plugin-cli-output
+    local loglines=$(cat /tmp/plugin-cli-output | wc -l)
+    [ "$loglines" -gt "6" ] || {
+        echo "Expected more than 6 lines but the output was:"
+        cat /tmp/plugin-cli-output
+        false
+    }
+    remove_jvm_example
+}
+

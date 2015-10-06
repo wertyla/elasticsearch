@@ -44,16 +44,6 @@ public final class XGeoUtils {
   /** Maximum latitude value. */
   public static final double MAX_LAT_INCL = 90.0D;
 
-  // magic numbers for bit interleaving
-  private static final long MAGIC[] = {
-          0x5555555555555555L, 0x3333333333333333L,
-          0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL,
-          0x0000FFFF0000FFFFL, 0x00000000FFFFFFFFL,
-          0xAAAAAAAAAAAAAAAAL
-  };
-  // shift values for bit interleaving
-  private static final short SHIFT[] = {1, 2, 4, 8, 16};
-
   public static double LOG2 = StrictMath.log(2);
 
   // No instance:
@@ -61,15 +51,15 @@ public final class XGeoUtils {
   }
 
   public static Long mortonHash(final double lon, final double lat) {
-    return interleave(scaleLon(lon), scaleLat(lat));
+    return BitUtil.interleave(scaleLon(lon), scaleLat(lat));
   }
 
   public static double mortonUnhashLon(final long hash) {
-    return unscaleLon(deinterleave(hash));
+    return unscaleLon(BitUtil.deinterleave(hash));
   }
 
   public static double mortonUnhashLat(final long hash) {
-    return unscaleLat(deinterleave(hash >>> 1));
+    return unscaleLat(BitUtil.deinterleave(hash >>> 1));
   }
 
   private static long scaleLon(final double val) {
@@ -86,46 +76,6 @@ public final class XGeoUtils {
 
   private static double unscaleLat(final long val) {
     return (val / LAT_SCALE) + MIN_LAT;
-  }
-
-  /**
-   * Interleaves the first 32 bits of each long value
-   *
-   * Adapted from: http://graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN
-   */
-  public static long interleave(long v1, long v2) {
-    v1 = (v1 | (v1 << SHIFT[4])) & MAGIC[4];
-    v1 = (v1 | (v1 << SHIFT[3])) & MAGIC[3];
-    v1 = (v1 | (v1 << SHIFT[2])) & MAGIC[2];
-    v1 = (v1 | (v1 << SHIFT[1])) & MAGIC[1];
-    v1 = (v1 | (v1 << SHIFT[0])) & MAGIC[0];
-    v2 = (v2 | (v2 << SHIFT[4])) & MAGIC[4];
-    v2 = (v2 | (v2 << SHIFT[3])) & MAGIC[3];
-    v2 = (v2 | (v2 << SHIFT[2])) & MAGIC[2];
-    v2 = (v2 | (v2 << SHIFT[1])) & MAGIC[1];
-    v2 = (v2 | (v2 << SHIFT[0])) & MAGIC[0];
-
-    return (v2<<1) | v1;
-  }
-
-  /**
-   * Deinterleaves long value back to two concatenated 32bit values
-   */
-  public static long deinterleave(long b) {
-    b &= MAGIC[0];
-    b = (b ^ (b >>> SHIFT[0])) & MAGIC[1];
-    b = (b ^ (b >>> SHIFT[1])) & MAGIC[2];
-    b = (b ^ (b >>> SHIFT[2])) & MAGIC[3];
-    b = (b ^ (b >>> SHIFT[3])) & MAGIC[4];
-    b = (b ^ (b >>> SHIFT[4])) & MAGIC[5];
-    return b;
-  }
-
-  /**
-   * flip flops odd with even bits
-   */
-  public static final long flipFlop(final long b) {
-    return ((b & MAGIC[6]) >>> 1) | ((b & MAGIC[0]) << 1 );
   }
 
   public static double compare(final double v1, final double v2) {

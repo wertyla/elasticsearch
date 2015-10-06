@@ -19,7 +19,6 @@
 
 package org.elasticsearch.tribe;
 
-import com.google.common.collect.ImmutableMap;
 import org.apache.lucene.util.LuceneTestCase;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthStatus;
@@ -50,11 +49,10 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Map;
 
-import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertAcked;
-import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertHitCount;
-import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertNoFailures;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.*;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 
@@ -97,7 +95,7 @@ public class TribeIT extends ESIntegTestCase {
     public void tearDownTribeNode() throws IOException {
         if (cluster2 != null) {
             try {
-                cluster2.wipe();
+                cluster2.wipe(Collections.<String>emptySet());
             } finally {
                 cluster2.afterTest();
             }
@@ -109,7 +107,7 @@ public class TribeIT extends ESIntegTestCase {
     }
 
     private void setupTribeNode(Settings settings) {
-        ImmutableMap<String,String> asMap = internalCluster().getDefaultSettings().getAsMap();
+        Map<String,String> asMap = internalCluster().getDefaultSettings().getAsMap();
         Settings.Builder tribe1Defaults = Settings.builder();
         Settings.Builder tribe2Defaults = Settings.builder();
         for (Map.Entry<String, String> entry : asMap.entrySet()) {

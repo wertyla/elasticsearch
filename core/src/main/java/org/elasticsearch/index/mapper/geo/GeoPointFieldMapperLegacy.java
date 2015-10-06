@@ -25,6 +25,7 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.Version;
+import org.elasticsearch.common.Explicit;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.geo.GeoPoint;
 import org.elasticsearch.common.geo.GeoUtils;
@@ -36,6 +37,8 @@ import org.elasticsearch.index.mapper.ContentPath;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.Mapper;
 import org.elasticsearch.index.mapper.MapperParsingException;
+import org.elasticsearch.index.mapper.MergeMappingException;
+import org.elasticsearch.index.mapper.MergeResult;
 import org.elasticsearch.index.mapper.ParseContext;
 import org.elasticsearch.index.mapper.core.DoubleFieldMapper;
 import org.elasticsearch.index.mapper.core.NumberFieldMapper.CustomNumericDocValuesField;
@@ -67,7 +70,7 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
     }
 
     public static class Defaults extends BaseGeoPointFieldMapper.Defaults{
-        public static final boolean COERCE = false;
+        public static final Explicit<Boolean> COERCE = new Explicit(false, false);
 
         public static final BaseGeoPointFieldType FIELD_TYPE = new GeoPointFieldType();
 
@@ -84,9 +87,26 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
      */
     public static class Builder extends BaseGeoPointFieldMapper.Builder<Builder, GeoPointFieldMapperLegacy> {
 
+        private Boolean coerce;
+
         public Builder(String name) {
             super(name, Defaults.FIELD_TYPE);
             this.builder = this;
+        }
+
+        public Builder coerce(boolean coerce) {
+            this.coerce = coerce;
+            return builder;
+        }
+
+        protected Explicit<Boolean> coerce(BuilderContext context) {
+            if (coerce != null) {
+                return new Explicit<>(coerce, true);
+            }
+            if (context.indexSettings() != null) {
+                return new Explicit<>(context.indexSettings().getAsBoolean("index.mapping.coerce", Defaults.COERCE.value()), false);
+            }
+            return Defaults.COERCE;
         }
 
         @Override
@@ -109,13 +129,14 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
         @Override
         public GeoPointFieldMapperLegacy build(BuilderContext context, String simpleName, MappedFieldType fieldType,
                                                MappedFieldType defaultFieldType, Settings indexSettings, ContentPath.Type pathType, DoubleFieldMapper latMapper,
-                                               DoubleFieldMapper lonMapper, StringFieldMapper geohashMapper, MultiFields multiFields, CopyTo copyTo) {
+                                               DoubleFieldMapper lonMapper, StringFieldMapper geohashMapper, MultiFields multiFields, Explicit<Boolean> ignoreMalformed,
+                                               CopyTo copyTo) {
             fieldType.setTokenized(false);
             setupFieldType(context);
             fieldType.setHasDocValues(false);
             defaultFieldType.setHasDocValues(false);
             return new GeoPointFieldMapperLegacy(simpleName, fieldType, defaultFieldType, indexSettings, pathType, latMapper, lonMapper,
-                    geohashMapper, multiFields, copyTo);
+                    geohashMapper, multiFields, ignoreMalformed, coerce(context), copyTo);
         }
 
         @Override
@@ -128,44 +149,28 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
         final boolean indexCreatedBeforeV2_0 = parserContext.indexVersionCreated().before(Version.V_2_0_0);
         for (Iterator<Map.Entry<String, Object>> iterator = node.entrySet().iterator(); iterator.hasNext();) {
             Map.Entry<String, Object> entry = iterator.next();
-            String fieldName = Strings.toUnderscoreCase(entry.getKey());
-            Object fieldNode = entry.getValue();
-            if (fieldName.equals(Names.IGNORE_MALFORMED)) {
-                if (builder.fieldType().coerce == false) {
-                    builder.fieldType().ignoreMalformed = XContentMapValues.nodeBooleanValue(fieldNode);
-                }
+            String propName = Strings.toUnderscoreCase(entry.getKey());
+            Object propNode = entry.getValue();
+            if (indexCreatedBeforeV2_0 && propName.equals("validate")) {
+                builder.ignoreMalformed = !XContentMapValues.nodeBooleanValue(propNode);
                 iterator.remove();
-            } else if (indexCreatedBeforeV2_0 && fieldName.equals("validate")) {
-                if (builder.fieldType().ignoreMalformed == false) {
-                    builder.fieldType().ignoreMalformed = !XContentMapValues.nodeBooleanValue(fieldNode);
-                }
+            } else if (indexCreatedBeforeV2_0 && propName.equals("validate_lon")) {
+                builder.ignoreMalformed = !XContentMapValues.nodeBooleanValue(propNode);
                 iterator.remove();
-            } else if (indexCreatedBeforeV2_0 && fieldName.equals("validate_lon")) {
-                if (builder.fieldType().ignoreMalformed() == false) {
-                    builder.fieldType().ignoreMalformed = !XContentMapValues.nodeBooleanValue(fieldNode);
-                }
+            } else if (indexCreatedBeforeV2_0 && propName.equals("validate_lat")) {
+                builder.ignoreMalformed = !XContentMapValues.nodeBooleanValue(propNode);
                 iterator.remove();
-            } else if (indexCreatedBeforeV2_0 && fieldName.equals("validate_lat")) {
-                if (builder.fieldType().ignoreMalformed == false) {
-                    builder.fieldType().ignoreMalformed = !XContentMapValues.nodeBooleanValue(fieldNode);
-                }
+            } else if (propName.equals(Names.COERCE)) {
+                builder.coerce = XContentMapValues.nodeBooleanValue(propNode);
                 iterator.remove();
-            } else if (fieldName.equals(Names.COERCE)) {
-                builder.fieldType().coerce = XContentMapValues.nodeBooleanValue(fieldNode);
-                if (builder.fieldType().coerce == true) {
-                    builder.fieldType().ignoreMalformed = true;
-                }
+            } else if (indexCreatedBeforeV2_0 && propName.equals("normalize")) {
+                builder.coerce = XContentMapValues.nodeBooleanValue(propNode);
                 iterator.remove();
-            } else if (indexCreatedBeforeV2_0 && fieldName.equals("normalize")) {
-                builder.fieldType().coerce = XContentMapValues.nodeBooleanValue(fieldNode);
+            } else if (indexCreatedBeforeV2_0 && propName.equals("normalize_lat")) {
+                builder.coerce = XContentMapValues.nodeBooleanValue(propNode);
                 iterator.remove();
-            } else if (indexCreatedBeforeV2_0 && fieldName.equals("normalize_lat")) {
-                builder.fieldType().coerce = XContentMapValues.nodeBooleanValue(fieldNode);
-                iterator.remove();
-            } else if (indexCreatedBeforeV2_0 && fieldName.equals("normalize_lon")) {
-                if (builder.fieldType().coerce == false) {
-                    builder.fieldType().coerce = XContentMapValues.nodeBooleanValue(fieldNode);
-                }
+            } else if (indexCreatedBeforeV2_0 && propName.equals("normalize_lon")) {
+                builder.coerce = XContentMapValues.nodeBooleanValue(propNode);
                 iterator.remove();
             }
         }
@@ -173,7 +178,6 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
     }
 
     public static final class GeoPointFieldType extends GeoPointFieldMapper.BaseGeoPointFieldType {
-        protected boolean coerce = false;
 
         public GeoPointFieldType() {
             super();
@@ -181,33 +185,11 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
 
         protected GeoPointFieldType(GeoPointFieldType ref) {
             super(ref);
-            this.coerce = ref.coerce;
         }
 
         @Override
         public MappedFieldType clone() {
             return new GeoPointFieldType(this);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (!super.equals(o)) return false;
-            GeoPointFieldType that = (GeoPointFieldType) o;
-            return coerce == that.coerce;
-        }
-
-        @Override
-        public int hashCode() {
-            return java.util.Objects.hash(super.hashCode(), coerce);
-        }
-
-        public boolean coerce() {
-            return this.coerce;
-        }
-
-        public void setCoerce(boolean coerce) {
-            checkIfFrozen();
-            this.coerce = coerce;
         }
 
         @Override
@@ -220,15 +202,41 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
         }
     }
 
+    protected Explicit<Boolean> coerce;
+
     public GeoPointFieldMapperLegacy(String simpleName, MappedFieldType fieldType, MappedFieldType defaultFieldType, Settings indexSettings,
                                      ContentPath.Type pathType, DoubleFieldMapper latMapper, DoubleFieldMapper lonMapper,
-                                     StringFieldMapper geohashMapper, MultiFields multiFields, CopyTo copyTo) {
-        super(simpleName, fieldType, defaultFieldType, indexSettings, pathType, latMapper, lonMapper, geohashMapper, multiFields, copyTo);
+                                     StringFieldMapper geohashMapper, MultiFields multiFields, Explicit<Boolean> ignoreMalformed,
+                                     Explicit<Boolean> coerce, CopyTo copyTo) {
+        super(simpleName, fieldType, defaultFieldType, indexSettings, pathType, latMapper, lonMapper, geohashMapper, multiFields,
+                ignoreMalformed, copyTo);
+        this.coerce = coerce;
     }
 
     @Override
     public GeoPointFieldType fieldType() {
         return (GeoPointFieldType) super.fieldType();
+    }
+
+    @Override
+    public void merge(Mapper mergeWith, MergeResult mergeResult) throws MergeMappingException {
+        super.merge(mergeWith, mergeResult);
+        if (!this.getClass().equals(mergeWith.getClass())) {
+            return;
+        }
+
+        GeoPointFieldMapperLegacy gpfmMergeWith = (GeoPointFieldMapperLegacy) mergeWith;
+        if (gpfmMergeWith.coerce.explicit()) {
+            if (coerce.explicit() && coerce.value() != gpfmMergeWith.coerce.value()) {
+                mergeResult.addConflict("mapper [" + fieldType().names().fullName() + "] has different [coerce]");
+            }
+        }
+
+        if (mergeResult.simulate() == false && mergeResult.hasConflicts() == false) {
+            if (gpfmMergeWith.coerce.explicit()) {
+                this.coerce = gpfmMergeWith.coerce;
+            }
+        }
     }
 
     @Override
@@ -238,16 +246,18 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
 
     @Override
     protected void parse(ParseContext context, GeoPoint point, String geohash) throws IOException {
-        if (fieldType().ignoreMalformed == false) {
+        boolean validPoint = false;
+        if (coerce.value() == false && ignoreMalformed.value() == false) {
             if (point.lat() > 90.0 || point.lat() < -90.0) {
                 throw new IllegalArgumentException("illegal latitude value [" + point.lat() + "] for " + name());
             }
             if (point.lon() > 180.0 || point.lon() < -180) {
                 throw new IllegalArgumentException("illegal longitude value [" + point.lon() + "] for " + name());
             }
+            validPoint = true;
         }
 
-        if (fieldType().coerce) {
+        if (coerce.value() == true && validPoint == false) {
             // by setting coerce to false we are assuming all geopoints are already in a valid coordinate system
             // thus this extra step can be skipped
             GeoUtils.normalizePoint(point, true, true);
@@ -274,8 +284,8 @@ public class GeoPointFieldMapperLegacy extends BaseGeoPointFieldMapper implement
     @Override
     protected void doXContentBody(XContentBuilder builder, boolean includeDefaults, Params params) throws IOException {
         super.doXContentBody(builder, includeDefaults, params);
-        if (includeDefaults || fieldType().coerce != Defaults.COERCE) {
-            builder.field(Names.COERCE, fieldType().coerce);
+        if (includeDefaults || coerce.explicit()) {
+            builder.field(Names.COERCE, coerce.value());
         }
     }
 

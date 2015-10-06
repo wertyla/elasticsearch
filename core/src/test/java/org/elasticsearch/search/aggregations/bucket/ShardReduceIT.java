@@ -65,7 +65,7 @@ public class ShardReduceIT extends ESIntegTestCase {
                 .startObject()
                 .field("value", value)
                 .field("ip", "10.0.0." + value)
-                .field("location", XGeoHashUtils.stringEncode(5, 52, 12))
+                .field("location", XGeoHashUtils.stringEncode(5, 52, XGeoHashUtils.PRECISION))
                 .field("date", date)
                 .field("term-l", 1)
                 .field("term-d", 1.5)

@@ -48,7 +48,7 @@ public class XGeoHashUtils {
     public static final long longEncode(final double lon, final double lat, final int level) {
         // shift to appropriate level
         final short msf = (short)(((12 - level) * 5) + MORTON_OFFSET);
-        return ((XGeoUtils.flipFlop(XGeoUtils.mortonHash(lon, lat)) >>> msf) << 4) | level;
+        return ((BitUtil.flipFlop(XGeoUtils.mortonHash(lon, lat)) >>> msf) << 4) | level;
     }
 
     /**
@@ -66,6 +66,22 @@ public class XGeoHashUtils {
     }
 
     /**
+<<<<<<< HEAD
+=======
+     * Encode an existing geohash long to the provided precision
+     */
+    public static long longEncode(long geohash, int level) {
+        final short precision = (short)(geohash & 15);
+        if (precision == level) {
+            return geohash;
+        } else if (precision > level) {
+            return ((geohash >>> (((precision - level) * 5) + 4)) << 4) | level;
+        }
+        return ((geohash >>> 4) << (((level - precision) * 5) + 4) | level);
+    }
+
+    /**
+>>>>>>> 2.1
      * Encode to a geohash string from the geohash based long format
      */
     public static final String stringEncode(long geoHashLong) {
@@ -92,7 +108,7 @@ public class XGeoHashUtils {
      */
     public static final String stringEncode(final double lon, final double lat, final int level) {
         // bit twiddle to geohash (since geohash is a swapped (lon/lat) encoding)
-        final long hashedVal = XGeoUtils.flipFlop(XGeoUtils.mortonHash(lon, lat));
+        final long hashedVal = BitUtil.flipFlop(XGeoUtils.mortonHash(lon, lat));
 
         StringBuilder geoHash = new StringBuilder();
         short precision = 0;
@@ -118,7 +134,7 @@ public class XGeoHashUtils {
      */
     public static final String stringEncodeFromMortonLong(long hashedVal, final int level) {
         // bit twiddle to geohash (since geohash is a swapped (lon/lat) encoding)
-        hashedVal = XGeoUtils.flipFlop(hashedVal);
+        hashedVal = BitUtil.flipFlop(hashedVal);
 
         StringBuilder geoHash = new StringBuilder();
         short precision = 0;
@@ -143,7 +159,7 @@ public class XGeoHashUtils {
             b = (long)(BASE_32_STRING.indexOf(c));
             l |= (b<<((level--*5) + MORTON_OFFSET));
         }
-        return XGeoUtils.flipFlop(l);
+        return BitUtil.flipFlop(l);
     }
 
     /**
@@ -153,7 +169,7 @@ public class XGeoHashUtils {
         final int level = (int)(geoHashLong&15);
         final short odd = (short)(level & 1);
 
-        return XGeoUtils.flipFlop((geoHashLong >>> 4) << odd) << (((12 - level) * 5) + (MORTON_OFFSET - odd));
+        return BitUtil.flipFlop((geoHashLong >>> 4) << odd) << (((12 - level) * 5) + (MORTON_OFFSET - odd));
     }
 
     private static final char encode(int x, int y) {

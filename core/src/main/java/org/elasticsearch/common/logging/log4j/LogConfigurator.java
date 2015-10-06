@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import static org.elasticsearch.common.Strings.cleanPath;
 import static org.elasticsearch.common.settings.Settings.settingsBuilder;
 
 /**
@@ -69,6 +70,7 @@ public class LogConfigurator {
             .put("socketHub", "org.apache.log4j.net.SocketHubAppender")
             .put("syslog", "org.apache.log4j.net.SyslogAppender")
             .put("telnet", "org.apache.log4j.net.TelnetAppender")
+            .put("terminal", "org.elasticsearch.common.logging.log4j.TerminalAppender")
                     // policies
             .put("timeBased", "org.apache.log4j.rolling.TimeBasedRollingPolicy")
             .put("sizeBased", "org.apache.log4j.rolling.SizeBasedTriggeringPolicy")
@@ -82,18 +84,30 @@ public class LogConfigurator {
             .put("xml", "org.apache.log4j.XMLLayout")
             .immutableMap();
 
-    public static void configure(Settings settings) {
+    /**
+     * Consolidates settings and converts them into actual log4j settings, then initializes loggers and appenders.
+     *
+     * @param settings      custom settings that should be applied
+     * @param resolveConfig controls whether the logging conf file should be read too or not.
+     */
+    public static void configure(Settings settings, boolean resolveConfig) {
         if (loaded) {
             return;
         }
         loaded = true;
+        // TODO: this is partly a copy of InternalSettingsPreparer...we should pass in Environment and not do all this...
         Environment environment = new Environment(settings);
-        Settings.Builder settingsBuilder = settingsBuilder().put(settings);
-        resolveConfig(environment, settingsBuilder);
+
+        Settings.Builder settingsBuilder = settingsBuilder();
+        if (resolveConfig) {
+            resolveConfig(environment, settingsBuilder);
+        }
         settingsBuilder
                 .putProperties("elasticsearch.", System.getProperties())
-                .putProperties("es.", System.getProperties())
-                .replacePropertyPlaceholders();
+                .putProperties("es.", System.getProperties());
+        // add custom settings after config was added so that they are not overwritten by config
+        settingsBuilder.put(settings);
+        settingsBuilder.replacePropertyPlaceholders();
         Properties props = new Properties();
         for (Map.Entry<String, String> entry : settingsBuilder.build().getAsMap().entrySet()) {
             String key = "log4j." + entry.getKey();
@@ -109,6 +123,8 @@ public class LogConfigurator {
                 props.setProperty(key, value);
             }
         }
+        // ensure explicit path to logs dir exists
+        props.setProperty("log4j.path.logs", cleanPath(environment.logsFile().toAbsolutePath().toString()));
         PropertyConfigurator.configure(props);
     }
 
@@ -116,11 +132,11 @@ public class LogConfigurator {
      * sets the loaded flag to false so that logging configuration can be
      * overridden. Should only be used in tests.
      */
-    public static void reset() {
+    static void reset() {
         loaded = false;
     }
 
-    public static void resolveConfig(Environment env, final Settings.Builder settingsBuilder) {
+    static void resolveConfig(Environment env, final Settings.Builder settingsBuilder) {
 
         try {
             Files.walkFileTree(env.configFile(), EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE, new SimpleFileVisitor<Path>() {
@@ -143,7 +159,7 @@ public class LogConfigurator {
         }
     }
 
-    public static void loadConfig(Path file, Settings.Builder settingsBuilder) {
+    static void loadConfig(Path file, Settings.Builder settingsBuilder) {
         try {
             settingsBuilder.loadFromPath(file);
         } catch (SettingsException | NoClassDefFoundError e) {

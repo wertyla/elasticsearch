@@ -29,7 +29,6 @@ import org.elasticsearch.common.logging.Loggers;
 
 import java.io.FilePermission;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.security.Permissions;
 import java.security.Policy;
@@ -51,25 +50,6 @@ public class BootstrapForTesting {
     // without making things complex???
 
     static {
-        // just like bootstrap, initialize natives, then SM
-        Bootstrap.initializeNatives(true, true);
-
-        // initialize probes
-        Bootstrap.initializeProbes();
-        
-        // check for jar hell
-        try {
-            JarHell.checkJarHell();
-        } catch (Exception e) {
-            if (Boolean.parseBoolean(System.getProperty("tests.maven"))) {
-                throw new RuntimeException("found jar hell in test classpath", e);
-            } else {
-                Loggers.getLogger(BootstrapForTesting.class)
-                    .warn("Your ide or custom test runner has jar hell issues, " +
-                          "you might want to look into that", e);
-            }
-        }
-
         // make sure java.io.tmpdir exists always (in case code uses it in a static initializer)
         Path javaTmpDir = PathUtils.get(Objects.requireNonNull(System.getProperty("java.io.tmpdir"),
                                                                "please set ${java.io.tmpdir} in pom.xml"));
@@ -79,6 +59,19 @@ public class BootstrapForTesting {
             throw new RuntimeException("unable to create test temp directory", e);
         }
 
+        // just like bootstrap, initialize natives, then SM
+        Bootstrap.initializeNatives(javaTmpDir, true, true, true);
+
+        // initialize probes
+        Bootstrap.initializeProbes();
+        
+        // check for jar hell
+        try {
+            JarHell.checkJarHell();
+        } catch (Exception e) {
+            throw new RuntimeException("found jar hell in test classpath", e);
+        }
+
         // install security manager if requested
         if (systemPropertyAsBoolean("tests.security.manager", false)) {
             try {
@@ -86,7 +79,7 @@ public class BootstrapForTesting {
                 // initialize paths the same exact way as bootstrap.
                 Permissions perms = new Permissions();
                 // add permissions to everything in classpath
-                for (URL url : ((URLClassLoader)BootstrapForTesting.class.getClassLoader()).getURLs()) {
+                for (URL url : JarHell.parseClassPath()) {
                     Path path = PathUtils.get(url.toURI());
                     // resource itself
                     perms.add(new FilePermission(path.toString(), "read,readlink"));
@@ -97,6 +90,7 @@ public class BootstrapForTesting {
                     String filename = path.getFileName().toString();
                     if (filename.contains("jython") && filename.endsWith(".jar")) {
                         // just enough so it won't fail when it does not exist
+                        perms.add(new FilePermission(path.getParent().toString(), "read,readlink"));
                         perms.add(new FilePermission(path.getParent().resolve("Lib").toString(), "read,readlink"));
                     }
                 }

@@ -30,17 +30,18 @@ import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.RateLimiter;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
+import org.apache.lucene.util.IOUtils;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.cluster.metadata.SnapshotId;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.common.ParseFieldMatcher;
-import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobMetaData;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
+import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.inject.Inject;
@@ -71,7 +72,6 @@ import org.elasticsearch.repositories.blobstore.LegacyBlobStoreFormat;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -105,6 +105,8 @@ public class BlobStoreIndexShardRepository extends AbstractComponent implements 
     private RateLimiterListener rateLimiterListener;
 
     private RateLimitingInputStream.Listener snapshotThrottleListener;
+
+    private RateLimitingInputStream.Listener restoreThrottleListener;
 
     private boolean compress;
 
@@ -163,6 +165,12 @@ public class BlobStoreIndexShardRepository extends AbstractComponent implements 
             @Override
             public void onPause(long nanos) {
                 rateLimiterListener.onSnapshotPause(nanos);
+            }
+        };
+        this.restoreThrottleListener = new RateLimitingInputStream.Listener() {
+            @Override
+            public void onPause(long nanos) {
+                rateLimiterListener.onRestorePause(nanos);
             }
         };
         this.compress = compress;
@@ -230,8 +238,8 @@ public class BlobStoreIndexShardRepository extends AbstractComponent implements 
         BlobContainer testBlobContainer = blobStore.blobContainer(basePath.add(testBlobPrefix(seed)));
         DiscoveryNode localNode = clusterService.localNode();
         if (testBlobContainer.blobExists("master.dat")) {
-            try (OutputStream outputStream = testBlobContainer.createOutput("data-" + localNode.getId() + ".dat")) {
-                outputStream.write(Strings.toUTF8Bytes(seed));
+            try  {
+                testBlobContainer.writeBlob("data-" + localNode.getId() + ".dat", new BytesArray(seed));
             } catch (IOException exp) {
                 throw new RepositoryVerificationException(repositoryName, "store location [" + blobStore + "] is not accessible on the node [" + localNode + "]", exp);
             }
@@ -641,18 +649,14 @@ public class BlobStoreIndexShardRepository extends AbstractComponent implements 
          */
         private void snapshotFile(final BlobStoreIndexShardSnapshot.FileInfo fileInfo) throws IOException {
             final String file = fileInfo.physicalName();
-            final byte[] buffer = new byte[BUFFER_SIZE];
             try (IndexInput indexInput = store.openVerifyingInput(file, IOContext.READONCE, fileInfo.metadata())) {
                 for (int i = 0; i < fileInfo.numberOfParts(); i++) {
-                    final InputStreamIndexInput inputStreamIndexInput = new InputStreamIndexInput(indexInput, fileInfo.partBytes());
+                    final long partBytes = fileInfo.partBytes(i);
+
+                    final InputStreamIndexInput inputStreamIndexInput = new InputStreamIndexInput(indexInput, partBytes);
                     InputStream inputStream = snapshotRateLimiter == null ? inputStreamIndexInput : new RateLimitingInputStream(inputStreamIndexInput, snapshotRateLimiter, snapshotThrottleListener);
                     inputStream = new AbortableInputStream(inputStream, fileInfo.physicalName());
-                    try (OutputStream output = blobContainer.createOutput(fileInfo.partName(i))) {
-                        int len;
-                        while ((len = inputStream.read(buffer)) > 0) {
-                            output.write(buffer, 0, len);
-                        }
-                    }
+                    blobContainer.writeBlob(fileInfo.partName(i), inputStream, partBytes);
                 }
                 Store.verify(indexInput);
                 snapshotStatus.addProcessedFile(fileInfo.length());
@@ -768,8 +772,7 @@ public class BlobStoreIndexShardRepository extends AbstractComponent implements 
 
         @Override
         protected InputStream openSlice(long slice) throws IOException {
-            return container.openInput(info.partName(slice));
-
+            return container.readBlob(info.partName(slice));
         }
     }
 
@@ -913,16 +916,20 @@ public class BlobStoreIndexShardRepository extends AbstractComponent implements 
          */
         private void restoreFile(final FileInfo fileInfo) throws IOException {
             boolean success = false;
-            try (InputStream stream = new PartSliceStream(blobContainer, fileInfo)) {
+
+            try (InputStream partSliceStream = new PartSliceStream(blobContainer, fileInfo)) {
+                final InputStream stream;
+                if (restoreRateLimiter == null) {
+                    stream = partSliceStream;
+                } else {
+                    stream = new RateLimitingInputStream(partSliceStream, restoreRateLimiter, restoreThrottleListener);
+                }
                 try (final IndexOutput indexOutput = store.createVerifyingOutput(fileInfo.physicalName(), fileInfo.metadata(), IOContext.DEFAULT)) {
                     final byte[] buffer = new byte[BUFFER_SIZE];
                     int length;
                     while ((length = stream.read(buffer)) > 0) {
                         indexOutput.writeBytes(buffer, 0, length);
                         recoveryState.getIndex().addRecoveredBytesToFile(fileInfo.name(), length);
-                        if (restoreRateLimiter != null) {
-                            rateLimiterListener.onRestorePause(restoreRateLimiter.pause(length));
-                        }
                     }
                     Store.verify(indexOutput);
                     indexOutput.close();

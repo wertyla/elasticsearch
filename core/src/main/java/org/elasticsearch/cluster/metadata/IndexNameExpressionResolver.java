@@ -222,6 +222,15 @@ public class IndexNameExpressionResolver extends AbstractComponent {
     }
 
     /**
+     * @return If the specified string is data math expression then this method returns the resolved expression.
+     */
+    public String resolveDateMathExpression(String dateExpression) {
+        // The data math expression resolver doesn't rely on cluster state or indices options, because
+        // it just resolves the date math to an actual date.
+        return dateMathExpressionResolver.resolveExpression(dateExpression, new Context(null, null));
+    }
+
+    /**
      * Iterates through the list of indices and selects the effective list of filtering aliases for the
      * given index.
      * <p/>
@@ -589,7 +598,7 @@ public class IndexNameExpressionResolver extends AbstractComponent {
                 if (Regex.isMatchAllPattern(expression)) {
                     // Can only happen if the expressions was initially: '-*'
                     matches = metaData.getAliasAndIndexLookup();
-                } else if (expression.endsWith("*")) {
+                } else if (expression.indexOf("*") == expression.length() - 1) {
                     // Suffix wildcard:
                     assert expression.length() >= 2 : "expression [" + expression + "] should have at least a length of 2";
                     String fromPrefix = expression.substring(0, expression.length() - 1);
