@@ -19,6 +19,7 @@
 
 package org.elasticsearch.search.aggregations.support;
 
+import org.elasticsearch.common.ParseField;
 import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.script.Script;
 import org.elasticsearch.script.Script.ScriptField;
@@ -90,6 +91,7 @@ public abstract class AbstractValuesSourceParser<VS extends ValuesSource> implem
         ValueType valueType = null;
         String format = null;
         Object missing = null;
+        Map<ParseField, Object> otherOptions = new HashMap<>();
 
         XContentParser.Token token;
         String currentFieldName = null;
@@ -129,7 +131,7 @@ public abstract class AbstractValuesSourceParser<VS extends ValuesSource> implem
                     throw new SearchParseException(context, "Unexpected token " + token + " in [" + aggregationName + "].",
                             parser.getTokenLocation());
                 }
-            } else if (!token(currentFieldName, token, parser)) {
+            } else if (!token(currentFieldName, token, parser, otherOptions)) {
                 throw new SearchParseException(context, "Unexpected token " + token + " in [" + aggregationName + "].",
                         parser.getTokenLocation());
             }
@@ -146,7 +148,8 @@ public abstract class AbstractValuesSourceParser<VS extends ValuesSource> implem
             }
         }
 
-        ValuesSourceAggregatorFactory<VS> factory = createFactory(aggregationName, this.valuesSourceType, this.targetValueType);
+        ValuesSourceAggregatorFactory<VS> factory = createFactory(aggregationName, this.valuesSourceType, this.targetValueType,
+                otherOptions);
         factory.field(field);
         factory.script(script);
         factory.valueType(valueType);
@@ -156,7 +159,8 @@ public abstract class AbstractValuesSourceParser<VS extends ValuesSource> implem
     }
 
     protected abstract ValuesSourceAggregatorFactory<VS> createFactory(String aggregationName, Class<VS> valuesSourceType,
-            ValueType targetValueType);
+            ValueType targetValueType, Map<ParseField, Object> otherOptions);
 
-    protected abstract boolean token(String currentFieldName, XContentParser.Token token, XContentParser parser) throws IOException;
+    protected abstract boolean token(String currentFieldName, XContentParser.Token token, XContentParser parser,
+            Map<ParseField, Object> otherOptions) throws IOException;
 }
