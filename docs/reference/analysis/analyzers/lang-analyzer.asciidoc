@@ -56,7 +56,7 @@ with the `keywords` set to the value of the `stem_exclusion` parameter.
 
 The following analyzers support setting custom `stem_exclusion` list:
 `arabic`, `armenian`, `basque`, `catalan`, `bulgarian`, `catalan`,
-`czech`, `finnish`, `dutch`, `english`, `finnish`, `french`, `galician`,
+`czech`, `dutch`, `english`, `finnish`, `french`, `galician`,
 `german`, `irish`, `hindi`, `hungarian`, `indonesian`, `italian`, `latvian`, `norwegian`,
 `portuguese`, `romanian`, `russian`, `sorani`, `spanish`, `swedish`, `turkish`.
 
